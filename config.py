@@ -18,9 +18,13 @@ SERVER_URL = os.getenv('SERVER_URL')
 INSTANCE = os.getenv('INSTANCE')
 APIKEY = os.getenv('APIKEY')
 
+# Configurações do OpenWeather
+WEATHER_API_KEY = os.getenv('WEATHER_API_KEY')
+CITY_ID = os.getenv('CITY_ID')
+
 # Validação das variáveis de ambiente
 required_vars = [
-    'BOT_URL', 'GROUP_ID', 'SERVER_URL', 'INSTANCE', 'APIKEY'
+    'BOT_URL', 'GROUP_ID', 'SERVER_URL', 'INSTANCE', 'APIKEY', 'WEATHER_API_KEY', 'CITY_ID'
 ]
 
 # Primeiro verifica se as variáveis existem
@@ -72,8 +76,6 @@ INTERVALO_MINIMO_PUBLICIDADE = timedelta(minutes=30)
 CHANCE_PUBLICIDADE = 0.5  # 50% de chance
 
 # Configurações de clima
-WEATHER_API_KEY = os.getenv('WEATHER_API_KEY')
-CITY_ID = '3453186'  # ID de Quarto Centenário-PR
 WEATHER_UPDATE_INTERVAL = 1800  # 30 minutos em segundos
 WEATHER_ALERT_THRESHOLDS = {
     'temp_max': 35,  # Alerta de calor acima de 35°C
