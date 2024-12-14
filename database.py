@@ -1,17 +1,28 @@
 import sqlite3
 from datetime import datetime, timedelta
 import pytz
-from config import BR_TIMEZONE
+from config import BR_TIMEZONE, REDIS_HOST, REDIS_PORT, REDIS_DB, REDIS_PASSWORD, REDIS_SSL
 import redis
 import json
+import sys
 
-# Inicializa cliente Redis
+# Configuração do Redis
 redis_client = redis.Redis(
-    host='redis',  # nome do serviço no docker-compose
-    port=6379,
-    db=0,
+    host=REDIS_HOST,
+    port=REDIS_PORT,
+    db=REDIS_DB,
+    password=REDIS_PASSWORD,
+    ssl=REDIS_SSL,
     decode_responses=True
 )
+
+# Testa conexão com Redis
+try:
+    redis_client.ping()
+except redis.ConnectionError as e:
+    print(f"Erro ao conectar ao Redis: {e}")
+    print("Verifique as configurações de conexão no arquivo .env")
+    sys.exit(1)
 
 def connect_db():
     return sqlite3.connect('traffic.db')

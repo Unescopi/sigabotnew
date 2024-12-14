@@ -18,8 +18,18 @@ SERVER_URL = os.getenv('SERVER_URL')
 INSTANCE = os.getenv('INSTANCE')
 APIKEY = os.getenv('APIKEY')
 
+# Configurações do Redis
+REDIS_HOST = os.getenv('REDIS_HOST', 'localhost')
+REDIS_PORT = int(os.getenv('REDIS_PORT', '6379'))
+REDIS_DB = int(os.getenv('REDIS_DB', '0'))
+REDIS_PASSWORD = os.getenv('REDIS_PASSWORD')
+REDIS_SSL = os.getenv('REDIS_SSL', 'False').lower() == 'true'
+
 # Validação das variáveis de ambiente
-required_vars = ['BOT_URL', 'GROUP_ID', 'SERVER_URL', 'INSTANCE', 'APIKEY']
+required_vars = [
+    'BOT_URL', 'GROUP_ID', 'SERVER_URL', 'INSTANCE', 'APIKEY',
+    'REDIS_HOST', 'REDIS_PASSWORD'
+]
 missing_vars = [var for var in required_vars if not os.getenv(var)]
 
 if missing_vars:
