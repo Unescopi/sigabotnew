@@ -107,39 +107,25 @@ def toggle_status(nome_remetente):
                     "➡️ *!nao* - Para cancelar"
                 )
             
-            if status_atual == ESTADO_ABERTO:
-                update_status('CENTER', ESTADO_FECHADO)
-                update_status('GOIO', ESTADO_ABERTO)
-                
-                if tempo_desde >= 60:
-                    record_closure_time('CENTER', tempo_desde)
-                    
-                return (
-                    " 🔄 *Status Atualizado*\n"
-                    "🟢 Goioerê PASSANDO\n"
-                    "❌ QC PARADO"
-                )
-                
-            elif status_atual == ESTADO_FECHADO:
-                update_status('CENTER', ESTADO_ABERTO)
-                update_status('GOIO', ESTADO_FECHADO)
-                
-                if tempo_desde >= 60:
-                    record_closure_time('GOIO', tempo_desde)
-                    
-                return (
-                    " 🔄 *Status Atualizado*\n"
-                    "🟢 QC PASSANDO\n"
-                    "❌ Goioerê PARADO"
-                )
-                
-            else:
-                logger.error(f"Status inválido: {status_atual}")
-                return (
-                    " ❌ *Erro*\n"
-                    "Não foi possível alterar o status.\n"
-                    "Por favor, tente novamente."
-                )
+            # Alternar status
+            novo_status_center = ESTADO_ABERTO if status_atual == ESTADO_FECHADO else ESTADO_FECHADO
+            novo_status_goio = ESTADO_FECHADO if status_atual == ESTADO_FECHADO else ESTADO_ABERTO
+            
+            update_status('CENTER', novo_status_center)
+            update_status('GOIO', novo_status_goio)
+            
+            if tempo_desde >= 60:
+                local_fechado = 'CENTER' if novo_status_center == ESTADO_FECHADO else 'GOIO'
+                record_closure_time(local_fechado, tempo_desde)
+            
+            local_passando = 'QC' if novo_status_center == ESTADO_ABERTO else 'Goioerê'
+            local_parado = 'Goioerê' if novo_status_center == ESTADO_ABERTO else 'QC'
+            
+            return (
+                " 🔄 *Status Atualizado*\n"
+                f"🟢 {local_passando} PASSANDO\n"
+                f"❌ {local_parado} PARADO"
+            )
                 
         finally:
             release_lock(STATUS_LOCK_KEY)
@@ -240,13 +226,6 @@ def get_mensagem_ajuda():
 # Constantes para estados
 ESTADO_ABERTO = 'ABERTO'
 ESTADO_FECHADO = 'FECHADO'
-ESTADO_TRANSICAO = 'TRANSICAO'  # Novo estado para quando ambos estão fechados
-
-INTENT_TYPES = {
-    "LIBERACAO": "liberação",
-    "FECHAMENTO": "fechamento",
-    "TRANSICAO_COMPLETA": "transição completa"  # Nova intenção
-}
 
 def notify_group(mensagem, group_id=None):
     """Envia mensagem para o grupo"""
@@ -323,27 +302,9 @@ def register_status_intent(nome_remetente, status_type, local):
         logger.info(f"Registrando status: tipo={status_type}, local={local}, remetente={nome_remetente}")
         
         # Verificar se o status é válido
-        if status_type not in [ESTADO_ABERTO, ESTADO_FECHADO, ESTADO_TRANSICAO, "TRANSICAO_COMPLETA"]:
+        if status_type not in [ESTADO_ABERTO, ESTADO_FECHADO]:
             logger.error(f"Status inválido recebido: {status_type}")
-            return "Status inválido. Use ABERTO, FECHADO ou TRANSICAO."
-            
-        # Se for uma confirmação de transição completa, salvar a intenção
-        if status_type == "TRANSICAO_COMPLETA":
-            try:
-                redis_client.setex(
-                    f"status_intent:{nome_remetente}",
-                    300,  # expira em 5 minutos
-                    json.dumps({
-                        "status_type": status_type,
-                        "local": local,
-                        "timestamp": get_current_time().strftime('%Y-%m-%d %H:%M:%S')
-                    })
-                )
-                logger.info(f"Intenção de transição completa registrada para {nome_remetente}")
-                return None
-            except Exception as e:
-                logger.error(f"Erro ao salvar intenção no Redis: {e}", exc_info=True)
-                return "Erro ao registrar intenção de transição"
+            return "Status inválido. Use ABERTO ou FECHADO."
             
         # Obter status atual
         try:
@@ -407,19 +368,7 @@ def register_status_intent(nome_remetente, status_type, local):
             if random.random() < 0.3 and pode_enviar_publicidade():
                 publicidade = f"\n\n📢 {get_mensagem_publicidade()}"
 
-            if status_type == ESTADO_TRANSICAO:
-                mensagem = (f"⚠️ ATENÇÃO ⚠️\n\n{nome_local} entrando em transição"
-                          f"\nAtualizado por: {nome_remetente}"
-                          f"\nHorário: {atual}"
-                          f"{status_info}"
-                          f"{weather_info}"
-                          f"\n\n📊 {stats}"
-                          f"\n⏰ {ultima_atualizacao}"
-                          f"{publicidade}")
-                notify_group(mensagem)
-                return f"{nome_local} entrando em transição"
-                
-            elif status_type == ESTADO_ABERTO:
+            if status_type == ESTADO_ABERTO:
                 mensagem = (f"🟢 LIBERADO 🟢\n\n{nome_local} está ABERTO"
                           f"\nAtualizado por: {nome_remetente}"
                           f"\nHorário: {atual}"
@@ -481,21 +430,17 @@ def process_transition_status(mensagem, nome_remetente):
         status_atual = get_status(local)
         
         # Se estiver em transição e a mensagem indicar que os carros passaram
-        if status_atual["status"] == ESTADO_TRANSICAO and any(pattern in mensagem for pattern in ultimos_carros_patterns):
+        if status_atual["status"] == ESTADO_FECHADO and any(pattern in mensagem for pattern in ultimos_carros_patterns):
             # Registrar intenção de completar a transição
-            register_status_intent(nome_remetente, "TRANSICAO_COMPLETA", local)
-            nome_local = "Centenário" if local == "center" else "Goioerê"
             return (
-                f" {nome_local}: Você está confirmando que todos os carros terminaram de passar?\n\n"
+                f" {local}: Você está confirmando que todos os carros terminaram de passar?\n\n"
                 "Para confirmar, responda com *!sim*\n"
                 "Para cancelar, responda com *!nao*"
             )
         
         # Se a mensagem indica fechamento para transição
         if "➡️" in mensagem or "->" in mensagem or "pra" in mensagem:
-            register_status_intent(nome_remetente, ESTADO_TRANSICAO, local)
-            nome_local = "Centenário" if local == "center" else "Goioerê"
-            return f"Iniciando transição no {nome_local}. Aguarde todos os carros passarem."
+            return register_status_intent(nome_remetente, ESTADO_FECHADO, local)
             
         # Se é uma atualização normal de status
         if any(word in mensagem for word in ["aberto", "liberado", "livre"]):
@@ -515,185 +460,56 @@ def process_transition_status(mensagem, nome_remetente):
         logger.error(f"Erro ao processar transição: {e}")
         return None
 
-def ajustar_tempo_abertura(minutos):
-    """
-    Ajusta o tempo de abertura com base no feedback dos usuários
-    e considera diferentes fatores como horário e fluxo
-    """
-    try:
-        # Verificar se é horário de pico
-        is_pico = is_horario_pico()
-        
-        # Obter condições climáticas
-        weather = get_weather_status()
-        
-        # Definir tempos base de acordo com as condições
-        tempo_base = 20  # tempo base em minutos
-        if is_pico:
-            tempo_base = 25  # aumenta em horário de pico
-        
-        if weather and weather.get('alerta'):
-            tempo_base += 5  # aumenta em condições climáticas adversas
-            
-        # Ajustar com base no feedback recebido
-        tempo_ajustado = (tempo_base + minutos) / 2
-        
-        # Limites de segurança
-        tempo_minimo = 15
-        tempo_maximo = 35
-        tempo_final = max(tempo_minimo, min(tempo_ajustado, tempo_maximo))
-        
-        # Registrar o ajuste
-        logger.info(
-            f"Ajuste de tempo - Base: {tempo_base}, "
-            f"Feedback: {minutos}, Final: {tempo_final}"
-        )
-        
-        return tempo_final
-        
-    except Exception as e:
-        logger.error(f"Erro ao ajustar tempo: {e}")
-        return None
-
-def should_send_weather_update():
-    """Verifica se deve enviar atualização do clima"""
-    try:
-        last_update = redis_client.get(WEATHER_UPDATE_KEY)
-        if not last_update:
-            return True
-            
-        last_update = float(last_update)
-        now = datetime.now(BR_TIMEZONE).timestamp()
-        
-        # Verifica se passaram 30 minutos desde a última atualização
-        return (now - last_update) >= 1800  # 30 minutos em segundos
-        
-    except Exception as e:
-        logger.error(f"Erro ao verificar última atualização do clima: {e}")
-        return False
-
-def get_weather_message():
-    """Retorna mensagem com informações do clima"""
-    try:
-        weather_info = update_weather_info()
-        if weather_info:
-            # Atualiza timestamp da última mensagem
-            now = datetime.now(BR_TIMEZONE).timestamp()
-            redis_client.set(WEATHER_UPDATE_KEY, str(now))
-            
-            # Formata mensagem do clima
-            mensagem = " *Atualização do Clima*\n"
-            mensagem += f"• Condição: {weather_info['condicao'].title()}\n"
-            
-            if weather_info.get('temp'):
-                mensagem += f"• Temperatura: {weather_info['temp']}°C\n"
-                
-            if weather_info.get('alerta'):
-                mensagem += f"\n⚠️ {weather_info['alerta']}"
-                
-            return mensagem
-            
-    except Exception as e:
-        logger.error(f"Erro ao gerar mensagem do clima: {e}")
-    return None
-
 def process_message(data):
     """Processa mensagens recebidas"""
     try:
-        # Log detalhado dos dados recebidos
-        logger.info("=" * 50)
+        logger.info("==================================================")
         logger.info("Nova mensagem recebida")
         logger.info(f"Dados completos: {json.dumps(data, indent=2)}")
         
-        # Extrair mensagem do objeto data
-        mensagem = ''
-        nome_remetente = 'Usuário'
+        # Extrair informações da mensagem
+        texto = data.get('text', '').lower().strip()
+        nome_remetente = data.get('sender', {}).get('pushName', 'Anônimo')
         
-        if isinstance(data, dict):
-            # Extrair texto da mensagem
-            if 'text' in data:
-                mensagem = data['text'].strip()
-            
-            # Extrair nome do remetente
-            if 'sender' in data and isinstance(data['sender'], dict):
-                nome_remetente = data['sender'].get('pushName', 'Usuário')
+        logger.info(f"Mensagem processada: '{texto}' de {nome_remetente}")
         
-        logger.info(f"Mensagem processada: '{mensagem}' de {nome_remetente}")
-        
-        if not mensagem:
-            logger.info("Mensagem vazia, ignorando")
-            return None
-            
-        # Ignorar mensagens muito curtas
-        if len(mensagem) < 3:
-            logger.info("Mensagem muito curta, ignorando")
-            return None
-            
         # Verificar se é um comando
-        if mensagem.startswith('!'):
-            logger.info("Processando comando")
-            return process_command(mensagem, nome_remetente)
+        if texto.startswith('!'):
+            return process_command(texto, nome_remetente)
             
-        # Verificar se é uma confirmação de transição
-        if "!sim" in mensagem.lower() or "!nao" in mensagem.lower():
-            logger.info("Processando confirmação")
-            return process_confirmation(mensagem, nome_remetente)
+        # Verificar se é uma confirmação
+        if texto in ['!sim', '!nao']:
+            return process_confirmation(texto, nome_remetente)
             
-        # Verificar se a mensagem contém palavras-chave relevantes
-        palavras_chave = [
-            "center", "centro", "centenario", "centenário",
-            "goio", "goioere", "goioerê",
-            "como", "qual", "status",
-            "liberado", "fechado", "aberto",
-            "transição", "transicao",
-            "bloqueado", "livre"
-        ]
-        
-        if not any(palavra in mensagem.lower() for palavra in palavras_chave):
-            logger.info("Mensagem sem palavras-chave relevantes, ignorando")
-            return None
+        # Verificar se é mensagem relevante
+        if any(palavra in texto for palavra in ['aberto', 'fechado', 'liberado', 'bloqueado', 'passando', 'parado']):
+            logger.info("Processando mensagem relevante")
             
-        # Processar mensagem relevante
-        logger.info("Processando mensagem relevante")
-        mensagem = mensagem.lower()
-        
-        # Verificar se é uma transição ou atualização de status
-        if any(word in mensagem for word in ["center", "centro", "centenario", "centenário", "goio", "goioere", "goioerê"]):
-            transition_response = process_transition_status(mensagem, nome_remetente)
-            if transition_response:
-                return transition_response
-        
-        # Verificar se é uma consulta de status
-        if any(word in mensagem for word in ["como", "qual", "status", "liberado", "fechado"]):
-            # Identificar local
-            if any(word in mensagem for word in ["center", "centro", "centenario", "centenário"]):
-                status = get_status("center")
-                return f"Status do Centenário: {status['status'].lower()} (Última atualização: {status['ultima_atualizacao']})"
-            elif any(word in mensagem for word in ["goio", "goioere", "goioerê"]):
-                status = get_status("goio")
-                return f"Status do Goioerê: {status['status'].lower()} (Última atualização: {status['ultima_atualizacao']})"
+            # Identificar local e status
+            if 'goio' in texto or 'goioerê' in texto:
+                local = 'goio'
+            elif 'center' in texto or 'centenário' in texto or 'qc' in texto:
+                local = 'center'
             else:
-                # Se não especificou local, retorna status de ambos
-                center_status = get_status("center")
-                goio_status = get_status("goio")
-                return (
-                    f"Status atual:\n"
-                    f"- Centenário: {center_status['status'].lower()}\n"
-                    f"- Goioerê: {goio_status['status'].lower()}\n"
-                    f"Última atualização: {center_status['ultima_atualizacao']}"
-                )
-        
-        # Se chegou aqui, não entendeu a mensagem
-        return (
-            "Desculpe, não entendi sua mensagem. Você pode:\n"
-            "1. Perguntar o status (ex: 'como está o Centenário?')\n"
-            "2. Atualizar o status (ex: 'Centenário está aberto')\n"
-            "3. Iniciar transição (ex: 'Goioerê➡️Center')\n"
-            "Use !ajuda para ver todos os comandos disponíveis"
-        )
+                return None
+                
+            if any(palavra in texto for palavra in ['fechado', 'bloqueado', 'parado']):
+                status_type = ESTADO_FECHADO
+            elif any(palavra in texto for palavra in ['aberto', 'liberado', 'passando']):
+                status_type = ESTADO_ABERTO
+            else:
+                return None
+                
+            return register_status_intent(nome_remetente, status_type, local)
+            
+        # Verificar se é mensagem de transição
+        if 'transição' in texto:
+            return process_transition_status(texto, nome_remetente)
+            
+        return None
         
     except Exception as e:
-        logger.error(f"Erro ao processar mensagem: {e}", exc_info=True)
+        logger.error(f"Erro ao processar mensagem: {e}")
         return None
 
 def process_command(mensagem, nome_remetente):
