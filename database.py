@@ -1,7 +1,7 @@
 import sqlite3
 from datetime import datetime, timedelta
 import pytz
-from config import BR_TIMEZONE, REDIS_HOST, REDIS_PORT, REDIS_DB, REDIS_PASSWORD, REDIS_SSL
+from config import BR_TIMEZONE
 import redis
 import json
 import sys
