@@ -403,7 +403,7 @@ def process_ai_message(mensagem, nome_remetente):
         }}"""
 
         response = openai.ChatCompletion.create(
-            model="gpt-4-1106-preview",
+            model="gpt-4o-mini",
             messages=[
                 {"role": "system", "content": "Você é um assistente que analisa mensagens sobre trânsito."},
                 {"role": "user", "content": relevance_prompt}
@@ -432,7 +432,7 @@ def process_ai_message(mensagem, nome_remetente):
                 }}"""
                 
                 intent_response = openai.ChatCompletion.create(
-                    model="gpt-4-1106-preview",
+                    model="gpt-4o-mini",
                     messages=[
                         {"role": "system", "content": "Você é um assistente que analisa mensagens sobre trânsito."},
                         {"role": "user", "content": intent_prompt}
