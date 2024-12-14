@@ -42,9 +42,15 @@ for url_var in ['BOT_URL', 'SERVER_URL']:
 
 # Verifica se GROUP_ID é um número válido
 try:
-    int(GROUP_ID)
-except ValueError:
-    invalid_vars.append("GROUP_ID (deve ser um número)")
+    # Formato do WhatsApp: número@g.us
+    group_id_parts = GROUP_ID.split('@')
+    if len(group_id_parts) != 2 or group_id_parts[1] != 'g.us':
+        invalid_vars.append("GROUP_ID (formato inválido, deve ser número@g.us)")
+    else:
+        # Verifica se a parte numérica é válida
+        int(group_id_parts[0])
+except (ValueError, AttributeError):
+    invalid_vars.append("GROUP_ID (formato inválido, deve ser número@g.us)")
 
 # Verifica se APIKEY tem um tamanho mínimo
 if len(APIKEY) < 10:
