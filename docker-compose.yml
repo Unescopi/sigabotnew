@@ -1,0 +1,24 @@
+version: '3'
+services:
+  bot:
+    build: .
+    restart: always
+    volumes:
+      - ./services:/app/services
+      - ./database:/app/database
+    environment:
+      - PYTHONUNBUFFERED=1
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+    depends_on:
+      - redis
+    command: python main.py 
+
+  redis:
+    image: redis:alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+
+volumes:
+  redis_data:
