@@ -249,9 +249,12 @@ def notify_group(mensagem, group_id=None):
         if not group_id:
             group_id = config.GROUP_ID
             
+        logger.info(f"Enviando notificação para o grupo {group_id}")
+        logger.info(f"Mensagem: {mensagem}")
+            
         headers = {
             'Content-Type': 'application/json',
-            'apikey': config.API_KEY
+            'apikey': config.APIKEY
         }
         
         payload = {
@@ -263,17 +266,21 @@ def notify_group(mensagem, group_id=None):
             }
         }
         
+        logger.info(f"Fazendo requisição para {config.SERVER_URL}/message/sendText/{config.INSTANCE}")
         response = requests.post(
-            f"{config.API_URL}/message/sendText/{config.INSTANCE}",
+            f"{config.SERVER_URL}/message/sendText/{config.INSTANCE}",
             headers=headers,
             json=payload
         )
         
         if response.status_code != 200:
             logger.error(f"Erro ao enviar mensagem para o grupo: {response.text}")
+            logger.error(f"Status code: {response.status_code}")
+        else:
+            logger.info("Notificação enviada com sucesso!")
             
     except Exception as e:
-        logger.error(f"Erro ao notificar grupo: {e}")
+        logger.error(f"Erro ao notificar grupo: {e}", exc_info=True)
 
 def process_confirmation(mensagem, nome_remetente):
     """Processa confirmações com proteção contra timing issues"""
