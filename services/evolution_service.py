@@ -344,9 +344,23 @@ def get_stats_message():
 def process_message(data):
     """Processa mensagens recebidas"""
     try:
-        mensagem = data.get('text', '').strip()
-        sender_info = data.get('sender', {})
-        nome_remetente = sender_info.get('pushName', 'Usuário')
+        # Extrair mensagem do objeto data
+        if 'data' in data and 'message' in data['data']:
+            message_obj = data['data']['message']
+            if 'conversation' in message_obj:
+                mensagem = message_obj['conversation'].strip()
+            else:
+                mensagem = ''
+        else:
+            mensagem = ''
+            
+        # Extrair nome do remetente
+        if 'data' in data and 'pushName' in data['data']:
+            nome_remetente = data['data']['pushName']
+        else:
+            nome_remetente = 'Usuário'
+        
+        logger.info(f"Processando mensagem: '{mensagem}' de {nome_remetente}")
         
         # Verificar se deve enviar atualização do clima
         if should_send_weather_update():
@@ -387,7 +401,7 @@ def process_ai_message(mensagem, nome_remetente):
         }}"""
 
         response = openai.ChatCompletion.create(
-            model="gpt-3.5-turbo",
+            model="gpt-4-1106-preview",
             messages=[{"role": "system", "content": relevance_prompt}]
         )
         
@@ -420,7 +434,7 @@ def process_ai_message(mensagem, nome_remetente):
                 }}"""
                 
                 intent_response = openai.ChatCompletion.create(
-                    model="gpt-3.5-turbo",
+                    model="gpt-4-1106-preview",
                     messages=[{"role": "system", "content": intent_prompt}]
                 )
                 
