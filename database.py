@@ -70,14 +70,14 @@ def calculate_average_closure(lado, limit=5):
     cursor = conn.cursor()
     
     # Pegar apenas fechamentos com duração significativa (mais de 1 minuto)
-    cursor.execute """
+    cursor.execute("""
         SELECT tempo_fechamento 
         FROM fechamentos 
         WHERE lado = ? 
         AND tempo_fechamento >= 60
-        ORDER BY timestamp DESC 
+        ORDER BY id DESC
         LIMIT ?
-    """, (lado, limit)
+    """, (lado, limit))
     
     tempos = cursor.fetchall()
     conn.close()
