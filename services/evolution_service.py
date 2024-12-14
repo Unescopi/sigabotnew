@@ -776,6 +776,9 @@ def update_weather_info():
                                json.dumps(weather_data),
                                ex=1800)  # Cache por 30 minutos
                 
+                # Salvar no banco SQLite
+                update_weather(condicao, alerta)
+                
                 return weather_data
                 
         except requests.RequestException as e:
