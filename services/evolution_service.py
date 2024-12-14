@@ -352,34 +352,25 @@ def process_message(data):
         
         if data.get('event') == 'messages.upsert':
             message_data = data.get('data', {})
-            if 'message' in message_data:
-                message_obj = message_data['message']
-                if 'conversation' in message_obj:
-                    mensagem = message_obj['conversation'].strip()
-            
-            nome_remetente = message_data.get('pushName', 'Usuário')
+            if message_data.get('message', {}).get('conversation'):
+                mensagem = message_data['message']['conversation'].strip()
+                nome_remetente = message_data.get('pushName', 'Usuário')
         
         logger.info(f"Processando mensagem: '{mensagem}' de {nome_remetente}")
         
         if not mensagem:
             return None
-        
-        # Verificar se deve enviar atualização do clima
-        if should_send_weather_update():
-            weather_msg = get_weather_message()
-            if weather_msg:
-                return weather_msg
-        
-        # Processar comandos específicos primeiro
+            
+        # Verificar se é um comando
         if mensagem.startswith('!'):
             return process_command(mensagem, nome_remetente)
             
-        # Processar mensagem com GPT para entender intenção e relevância
+        # Processar com GPT
         return process_ai_message(mensagem, nome_remetente)
         
     except Exception as e:
-        logger.error(f"Erro ao processar mensagem: {e}")
-        return "Erro ao processar a mensagem"
+        logger.error(f"Erro ao processar mensagem: {e}", exc_info=True)
+        return None
 
 def process_ai_message(mensagem, nome_remetente):
     """Processa mensagens usando GPT para entender a intenção do usuário"""
