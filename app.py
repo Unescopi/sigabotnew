@@ -69,7 +69,7 @@ def webhook():
                         url = f"{data.get('server_url')}/message/sendText/{data.get('instance')}"
                         headers = {
                             "Content-Type": "application/json",
-                            "apikey": data.get('apikey')
+                            "apikey": os.getenv('APIKEY')
                         }
                         payload = {
                             "number": group_id,
