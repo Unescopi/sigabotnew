@@ -64,6 +64,18 @@ def toggle_status(nome_remetente):
             )
         
         try:
+            # Verificar se já há uma transição em andamento
+            transicao_center = redis_client.get(TRANSICAO_KEY.format(local='CENTER'))
+            transicao_goio = redis_client.get(TRANSICAO_KEY.format(local='GOIO'))
+            
+            if transicao_center or transicao_goio:
+                return (
+                    " ⚠️ *Atenção*\n"
+                    "Já há uma transição em andamento.\n"
+                    "Aguarde ela ser concluída ou cancele\n"
+                    "com o comando !cancelar"
+                )
+            
             status_atual, ultima_atualizacao = get_status('CENTER')
             if not status_atual or not ultima_atualizacao:
                 logger.error("Erro ao obter status atual")
@@ -115,33 +127,16 @@ def toggle_status(nome_remetente):
                     "➡️ *!nao* - Para cancelar"
                 )
             
-            # Alternar status
-            novo_status_center = ESTADO_ABERTO if status_atual == ESTADO_FECHADO else ESTADO_FECHADO
-            novo_status_goio = ESTADO_FECHADO if status_atual == ESTADO_FECHADO else ESTADO_ABERTO
-            
-            try:
-                update_status('CENTER', novo_status_center)
-                update_status('GOIO', novo_status_goio)
-            except Exception as e:
-                logger.error(f"Erro ao atualizar status: {e}")
+            # Iniciar transição
+            local_fechado = 'CENTER' if status_atual == ESTADO_ABERTO else 'GOIO'
+            if start_transition(local_fechado, nome_remetente):
+                return None  # start_transition já envia a mensagem
+            else:
                 return (
                     " ❌ *Erro*\n"
-                    "Não foi possível atualizar o status.\n"
+                    "Não foi possível iniciar a transição.\n"
                     "Por favor, tente novamente."
                 )
-            
-            if tempo_desde >= 60:
-                local_fechado = 'CENTER' if novo_status_center == ESTADO_FECHADO else 'GOIO'
-                record_closure_time(local_fechado, tempo_desde)
-            
-            local_passando = 'QC' if novo_status_center == ESTADO_ABERTO else 'Goioerê'
-            local_parado = 'Goioerê' if novo_status_center == ESTADO_ABERTO else 'QC'
-            
-            return (
-                " 🔄 *Status Atualizado*\n"
-                f"🟢 {local_passando} PASSANDO\n"
-                f"❌ {local_parado} PARADO"
-            )
                 
         finally:
             release_lock(STATUS_LOCK_KEY)
@@ -230,18 +225,35 @@ def get_current_status():
 def get_mensagem_ajuda():
     """Retorna lista de comandos disponíveis"""
     return (
-        " *Sistema PARE/SIGA* 🚦\n\n"
-        "📱 *Comandos Disponíveis*\n"
-        "➡️ *!status* - Ver situação atual\n"
-        "➡️ *!alterna* - Atualizar status\n"
-        "➡️ *!stats* - Ver estatísticas\n"
-        "➡️ *!ajuda* - Ver comandos\n\n"
-        "💡 _Você também pode escrever normalmente sobre a situação do trânsito_"
+        " 📱 *Comandos Disponíveis*\n\n"
+        "*Consultas*\n"
+        "➡️ *!status* - Ver status atual\n"
+        "➡️ *!stats* - Ver estatísticas do dia\n\n"
+        "*Alterações*\n"
+        "➡️ *!alterna* - Iniciar transição\n"
+        "➡️ *!passou* - Confirmar que todos passaram\n"
+        "➡️ *!cancelar* - Cancelar transição\n\n"
+        "*Confirmações*\n"
+        "➡️ *!sim* - Confirmar ação\n"
+        "➡️ *!nao* - Cancelar ação\n\n"
+        "*Outros*\n"
+        "➡️ *!ajuda* - Ver esta mensagem"
     )
 
 # Constantes para estados
 ESTADO_ABERTO = 'ABERTO'
 ESTADO_FECHADO = 'FECHADO'
+ESTADO_TRANSICAO = 'TRANSICAO'
+
+# Constantes de tempo (em minutos)
+TEMPO_MEDIO_TRANSICAO = 20
+TEMPO_MINIMO_TRANSICAO = 10
+TEMPO_MAXIMO_TRANSICAO = 30
+
+# Chaves Redis para controle de transição
+TRANSICAO_KEY = 'transicao_{local}'
+ULTIMO_FECHAMENTO_KEY = 'ultimo_fechamento_{local}'
+CARROS_PASSANDO_KEY = 'carros_passando_{local}'
 
 def notify_group(mensagem, group_id=None):
     """Envia mensagem para o grupo"""
@@ -388,16 +400,80 @@ def process_message(data):
 
 def process_command(mensagem, nome_remetente):
     """Processa comandos com !"""
-    if mensagem in ['!sim', '!nao']:
-        return process_confirmation(mensagem, nome_remetente)
+    try:
+        mensagem = mensagem.lower().strip()
         
-    comandos = {
-        '!status': get_current_status,
-        '!alterna': lambda: toggle_status(nome_remetente),
-        '!stats': get_stats_message,
-        '!ajuda': get_mensagem_ajuda
-    }
-    return comandos.get(mensagem, lambda: None)()
+        # Comandos de ajuda
+        if mensagem == '!ajuda':
+            return get_mensagem_ajuda()
+            
+        # Comandos de status
+        if mensagem == '!status':
+            status_center, ultima_center = get_status('CENTER')
+            status_goio, ultima_goio = get_status('GOIO')
+            
+            if not status_center or not status_goio:
+                return (
+                    " ❌ *Erro*\n"
+                    "Não foi possível obter o status.\n"
+                    "Por favor, tente novamente."
+                )
+                
+            tempo_center = get_time_since_update(ultima_center)
+            tempo_goio = get_time_since_update(ultima_goio)
+            
+            # Obter informações do clima
+            weather = get_weather_status()
+            weather_info = ""
+            if weather:
+                weather_info = f"\n\n🌤️ *Clima*: {weather['condicao']}"
+                if weather.get('alerta'):
+                    weather_info += f"\n⚠️ {weather['alerta']}"
+            
+            # Obter estatísticas
+            stats = get_stats_message()
+            
+            # Chance de 30% de mostrar publicidade
+            publicidade = ""
+            if random.random() < 0.3 and pode_enviar_publicidade():
+                publicidade = f"\n\n📢 {get_mensagem_publicidade()}"
+            
+            return (
+                " 📊 *Status Atual*\n\n"
+                f"QC: {status_center}\n"
+                f"⏰ {tempo_center}\n\n"
+                f"Goioerê: {status_goio}\n"
+                f"⏰ {tempo_goio}"
+                f"{weather_info}\n\n"
+                f"📊 {stats}"
+                f"{publicidade}"
+            )
+            
+        # Comandos de alternância
+        if mensagem == '!alterna':
+            return toggle_status(nome_remetente)
+            
+        # Comandos de confirmação
+        if mensagem in ['!sim', '!nao']:
+            return process_confirmation(mensagem, nome_remetente)
+            
+        # Comandos de transição
+        if mensagem in ['!passou', '!cancelar']:
+            return process_transition_command(mensagem, nome_remetente)
+            
+        # Comando não reconhecido
+        return (
+            " ❓ *Comando Desconhecido*\n"
+            "Use !ajuda para ver os comandos disponíveis."
+        )
+        
+    except Exception as e:
+        logger.error(f"Erro ao processar comando: {e}")
+        return (
+            " ❌ *Erro*\n"
+            "Ocorreu um erro ao processar o comando.\n"
+            "Por favor, tente novamente."
+        )
 
 def get_status(local):
     """Retorna o status de um local específico"""
@@ -508,3 +584,135 @@ def update_weather_info():
         return json.loads(cached_weather)
         
     return None
+
+def start_transition(local, nome_remetente):
+    """Inicia transição para um local"""
+    try:
+        # Registrar início da transição
+        redis_client.set(
+            TRANSICAO_KEY.format(local=local),
+            json.dumps({
+                'inicio': time.time(),
+                'remetente': nome_remetente,
+                'status': 'iniciada'
+            }),
+            ex=3600  # Expira em 1 hora
+        )
+        
+        # Notificar grupo
+        notify_group(
+            f" 🔄 *Iniciando Transição*\n\n"
+            f"Local: {local}\n"
+            f"Iniciada por: {nome_remetente}\n\n"
+            "⚠️ Aguardando confirmação de que\n"
+            "todos os carros terminaram de passar.\n\n"
+            "📱 Responda com:\n"
+            "➡️ *!passou* - Quando todos passarem\n"
+            "➡️ *!cancelar* - Para cancelar"
+        )
+        
+    except Exception as e:
+        logger.error(f"Erro ao iniciar transição: {e}")
+        return False
+    return True
+
+def check_transition_time(local):
+    """Verifica tempo de transição com base em variáveis"""
+    try:
+        # Obter clima atual
+        weather = get_weather_status()
+        
+        # Ajustar tempo base
+        tempo_base = TEMPO_MEDIO_TRANSICAO
+        
+        # Ajustar por clima
+        if weather:
+            if 'chuva' in weather['condicao'].lower():
+                tempo_base *= 1.5  # 50% mais tempo
+            elif 'neve' in weather['condicao'].lower():
+                tempo_base *= 2  # Dobro do tempo
+            
+        # Ajustar por horário de pico
+        if is_horario_pico():
+            tempo_base *= 1.3  # 30% mais tempo
+            
+        # Garantir limites
+        return min(max(tempo_base, TEMPO_MINIMO_TRANSICAO), TEMPO_MAXIMO_TRANSICAO)
+        
+    except Exception as e:
+        logger.error(f"Erro ao calcular tempo de transição: {e}")
+        return TEMPO_MEDIO_TRANSICAO
+
+def process_transition_command(mensagem, nome_remetente):
+    """Processa comandos de transição"""
+    try:
+        if mensagem == '!passou':
+            # Verificar se há transição ativa
+            transicao_center = redis_client.get(TRANSICAO_KEY.format(local='CENTER'))
+            transicao_goio = redis_client.get(TRANSICAO_KEY.format(local='GOIO'))
+            
+            if not transicao_center and not transicao_goio:
+                return (
+                    " ❌ *Erro*\n"
+                    "Não há transição em andamento.\n"
+                    "Use !alterna para iniciar uma."
+                )
+                
+            # Identificar qual local está em transição
+            local = 'CENTER' if transicao_center else 'GOIO'
+            transicao = json.loads(transicao_center or transicao_goio)
+            
+            # Calcular tempo decorrido
+            tempo_decorrido = (time.time() - transicao['inicio']) / 60  # em minutos
+            tempo_esperado = check_transition_time(local)
+            
+            if tempo_decorrido < TEMPO_MINIMO_TRANSICAO:
+                return (
+                    " ⚠️ *Atenção*\n"
+                    f"Tempo muito curto ({int(tempo_decorrido)} minutos).\n"
+                    f"Aguarde pelo menos {TEMPO_MINIMO_TRANSICAO} minutos\n"
+                    "para garantir que todos passaram."
+                )
+                
+            # Registrar tempo de fechamento
+            record_closure_time(local, int(tempo_decorrido * 60))  # converter para segundos
+            
+            # Limpar transição
+            redis_client.delete(TRANSICAO_KEY.format(local=local))
+            
+            # Alternar status
+            toggle_status(nome_remetente)
+            
+            return None  # toggle_status já envia a mensagem
+            
+        elif mensagem == '!cancelar':
+            # Verificar se há transição ativa
+            transicao_center = redis_client.get(TRANSICAO_KEY.format(local='CENTER'))
+            transicao_goio = redis_client.get(TRANSICAO_KEY.format(local='GOIO'))
+            
+            if not transicao_center and not transicao_goio:
+                return (
+                    " ❌ *Erro*\n"
+                    "Não há transição em andamento\n"
+                    "para cancelar."
+                )
+                
+            # Identificar qual local está em transição
+            local = 'CENTER' if transicao_center else 'GOIO'
+            
+            # Limpar transição
+            redis_client.delete(TRANSICAO_KEY.format(local=local))
+            
+            return (
+                " 🚫 *Transição Cancelada*\n"
+                f"Local: {local}\n"
+                f"Cancelada por: {nome_remetente}"
+            )
+            
+    except Exception as e:
+        logger.error(f"Erro ao processar comando de transição: {e}")
+        return (
+            " ❌ *Erro*\n"
+            "Ocorreu um erro ao processar o comando.\n"
+            "Por favor, tente novamente."
+        )
