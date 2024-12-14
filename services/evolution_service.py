@@ -344,23 +344,25 @@ def get_stats_message():
 def process_message(data):
     """Processa mensagens recebidas"""
     try:
+        logger.info(f"Dados recebidos: {json.dumps(data, indent=2)}")
+        
         # Extrair mensagem do objeto data
-        if 'data' in data and 'message' in data['data']:
-            message_obj = data['data']['message']
-            if 'conversation' in message_obj:
-                mensagem = message_obj['conversation'].strip()
-            else:
-                mensagem = ''
-        else:
-            mensagem = ''
+        mensagem = ''
+        nome_remetente = 'Usuário'
+        
+        if data.get('event') == 'messages.upsert':
+            message_data = data.get('data', {})
+            if 'message' in message_data:
+                message_obj = message_data['message']
+                if 'conversation' in message_obj:
+                    mensagem = message_obj['conversation'].strip()
             
-        # Extrair nome do remetente
-        if 'data' in data and 'pushName' in data['data']:
-            nome_remetente = data['data']['pushName']
-        else:
-            nome_remetente = 'Usuário'
+            nome_remetente = message_data.get('pushName', 'Usuário')
         
         logger.info(f"Processando mensagem: '{mensagem}' de {nome_remetente}")
+        
+        if not mensagem:
+            return None
         
         # Verificar se deve enviar atualização do clima
         if should_send_weather_update():
@@ -402,57 +404,55 @@ def process_ai_message(mensagem, nome_remetente):
 
         response = openai.ChatCompletion.create(
             model="gpt-4-1106-preview",
-            messages=[{"role": "system", "content": relevance_prompt}]
+            messages=[
+                {"role": "system", "content": "Você é um assistente que analisa mensagens sobre trânsito."},
+                {"role": "user", "content": relevance_prompt}
+            ],
+            response_format={ "type": "json_object" }
         )
         
         try:
-            relevance_data = json.loads(response.choices[0].message.content)
-            relevance_score = relevance_data.get('relevance_score', 0)
+            result = json.loads(response.choices[0].message.content)
+            logger.info(f"Análise GPT: {json.dumps(result, indent=2)}")
             
-            # Ignorar mensagens irrelevantes
-            if relevance_score < 0.5:
+            if result['relevance_score'] < 0.5:
                 return None
                 
-            # Processar mensagens relevantes
-            if relevance_score >= 0.7:
-                # Entender a intenção da mensagem
-                intent_prompt = f"""Analise esta mensagem sobre trânsito:
+            if result['relevance_score'] >= 0.7:
+                # Processar mensagem relevante
+                intent_prompt = f"""Analise a seguinte mensagem sobre trânsito:
                 Mensagem: "{mensagem}"
-                Categoria: {relevance_data.get('category')}
+                Remetente: {nome_remetente}
                 
-                Determine:
-                1. Se é uma atualização de status
-                2. Se é uma pergunta sobre a situação
-                3. Se é um feedback sobre condições
-                4. Se contém informação sobre tempo de espera
-                
-                Retorne em formato JSON:
+                Determine a intenção do usuário e retorne em formato JSON:
                 {{
-                    "intent": string,
-                    "action_needed": boolean,
+                    "intent": string (status|update|query|other),
+                    "action": string,
                     "response": string
                 }}"""
                 
                 intent_response = openai.ChatCompletion.create(
                     model="gpt-4-1106-preview",
-                    messages=[{"role": "system", "content": intent_prompt}]
+                    messages=[
+                        {"role": "system", "content": "Você é um assistente que analisa mensagens sobre trânsito."},
+                        {"role": "user", "content": intent_prompt}
+                    ],
+                    response_format={ "type": "json_object" }
                 )
                 
-                intent_data = json.loads(intent_response.choices[0].message.content)
+                intent_result = json.loads(intent_response.choices[0].message.content)
+                logger.info(f"Intenção detectada: {json.dumps(intent_result, indent=2)}")
                 
-                # Executar ação baseada na intenção
-                if intent_data.get('action_needed'):
-                    if 'status' in intent_data.get('intent', '').lower():
-                        return toggle_status(nome_remetente)
-                    # Adicionar mais ações conforme necessário
+                if intent_result['intent'] == 'status':
+                    return get_current_status()
+                elif intent_result['intent'] == 'query':
+                    return intent_result['response']
+                    
+                return None
                 
-                return intent_data.get('response')
-            
-            # Para mensagens parcialmente relevantes, dar uma resposta genérica
-            return "Entendi sua mensagem, mas preciso de mais informações específicas sobre o trânsito para ajudar melhor."
-            
-        except json.JSONDecodeError:
-            logger.error("Erro ao decodificar resposta do GPT")
+        except json.JSONDecodeError as e:
+            logger.error(f"Erro ao decodificar resposta do GPT: {e}")
+            logger.error(f"Resposta recebida: {response.choices[0].message.content}")
             return None
             
     except Exception as e:
