@@ -396,12 +396,26 @@ def register_status_intent(nome_remetente, status_type, local):
             outro_nome = "Centenário" if outro_local == "center" else "Goioerê"
             status_info = f"\n\n{outro_nome}: {outro_status}"
 
+            # Obter estatísticas do dia
+            stats = get_stats_message()
+            
+            # Obter tempo desde última atualização
+            ultima_atualizacao = get_time_since_update(atual)
+
+            # Obter mensagem de publicidade (30% de chance)
+            publicidade = ""
+            if random.random() < 0.3 and pode_enviar_publicidade():
+                publicidade = f"\n\n📢 {get_mensagem_publicidade()}"
+
             if status_type == ESTADO_TRANSICAO:
                 mensagem = (f"⚠️ ATENÇÃO ⚠️\n\n{nome_local} entrando em transição"
                           f"\nAtualizado por: {nome_remetente}"
                           f"\nHorário: {atual}"
                           f"{status_info}"
-                          f"{weather_info}")
+                          f"{weather_info}"
+                          f"\n\n📊 {stats}"
+                          f"\n⏰ {ultima_atualizacao}"
+                          f"{publicidade}")
                 notify_group(mensagem)
                 return f"{nome_local} entrando em transição"
                 
@@ -410,7 +424,10 @@ def register_status_intent(nome_remetente, status_type, local):
                           f"\nAtualizado por: {nome_remetente}"
                           f"\nHorário: {atual}"
                           f"{status_info}"
-                          f"{weather_info}")
+                          f"{weather_info}"
+                          f"\n\n📊 {stats}"
+                          f"\n⏰ {ultima_atualizacao}"
+                          f"{publicidade}")
                 notify_group(mensagem)
                 return f"Status do {nome_local} atualizado para aberto"
                 
@@ -419,7 +436,10 @@ def register_status_intent(nome_remetente, status_type, local):
                           f"\nAtualizado por: {nome_remetente}"
                           f"\nHorário: {atual}"
                           f"{status_info}"
-                          f"{weather_info}")
+                          f"{weather_info}"
+                          f"\n\n📊 {stats}"
+                          f"\n⏰ {ultima_atualizacao}"
+                          f"{publicidade}")
                 notify_group(mensagem)
                 return f"Status do {nome_local} atualizado para fechado"
         except Exception as e:
