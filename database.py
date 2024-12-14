@@ -8,7 +8,7 @@ import sys
 
 # Configuração do Redis
 redis_client = redis.Redis(
-    host='172.18.0.1',  # Host interno do EasyPanel
+    host='sigabot_redis',  # Nome interno do serviço Redis no EasyPanel
     port=6379,
     db=0,
     decode_responses=True
@@ -19,7 +19,7 @@ try:
     redis_client.ping()
 except redis.ConnectionError as e:
     print(f"Erro ao conectar ao Redis: {e}")
-    print("Verifique se o Redis está acessível no host 172.18.0.1")
+    print("Verifique se o serviço 'sigabot_redis' está acessível")
     sys.exit(1)
 
 def connect_db():
