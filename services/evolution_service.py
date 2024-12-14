@@ -2,11 +2,11 @@ import os
 import json
 import logging
 import re
+import time
+import requests
 from datetime import datetime, timedelta
 import pytz
-import requests
 import random
-import time
 import openai
 from database import (
     get_status, update_status, record_closure_time,
