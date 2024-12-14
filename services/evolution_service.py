@@ -397,7 +397,7 @@ def process_ai_message(mensagem, nome_remetente):
         }}"""
 
         response = openai.ChatCompletion.create(
-            model="gpt-3.5-turbo",  # Voltando para um modelo mais estável
+            model="gpt-3.5-turbo",
             messages=[
                 {"role": "system", "content": "Você é um assistente que analisa mensagens sobre trânsito."},
                 {"role": "user", "content": relevance_prompt}
@@ -412,37 +412,42 @@ def process_ai_message(mensagem, nome_remetente):
             if result['relevance_score'] < 0.5:
                 return None
                 
-            if result['relevance_score'] >= 0.7:
-                # Processar mensagem relevante
-                intent_prompt = f"""Analise a seguinte mensagem sobre trânsito:
-                Mensagem: "{mensagem}"
-                Remetente: {nome_remetente}
+            # Processar mensagem relevante
+            intent_prompt = f"""Analise a seguinte mensagem sobre trânsito:
+            Mensagem: "{mensagem}"
+            Remetente: {nome_remetente}
+            
+            Determine a intenção do usuário e retorne em formato JSON:
+            {{
+                "intent": string (status|update|query|other),
+                "action": string,
+                "response": string
+            }}"""
+            
+            intent_response = openai.ChatCompletion.create(
+                model="gpt-3.5-turbo",
+                messages=[
+                    {"role": "system", "content": "Você é um assistente que analisa mensagens sobre trânsito."},
+                    {"role": "user", "content": intent_prompt}
+                ],
+                response_format={ "type": "json_object" }
+            )
+            
+            intent_result = json.loads(intent_response.choices[0].message.content)
+            logger.info(f"Intenção detectada: {json.dumps(intent_result, indent=2)}")
+            
+            if intent_result['intent'] == 'status':
+                return get_current_status()
+            elif intent_result['intent'] == 'query':
+                return intent_result['response']
+            elif intent_result['intent'] == 'update':
+                # Processar atualização de status
+                if "fechado" in mensagem.lower():
+                    return register_status_intent(nome_remetente, "FECHADO", mensagem)
+                elif "aberto" in mensagem.lower():
+                    return register_status_intent(nome_remetente, "ABERTO", mensagem)
                 
-                Determine a intenção do usuário e retorne em formato JSON:
-                {{
-                    "intent": string (status|update|query|other),
-                    "action": string,
-                    "response": string
-                }}"""
-                
-                intent_response = openai.ChatCompletion.create(
-                    model="gpt-3.5-turbo",  # Voltando para um modelo mais estável
-                    messages=[
-                        {"role": "system", "content": "Você é um assistente que analisa mensagens sobre trânsito."},
-                        {"role": "user", "content": intent_prompt}
-                    ],
-                    response_format={ "type": "json_object" }
-                )
-                
-                intent_result = json.loads(intent_response.choices[0].message.content)
-                logger.info(f"Intenção detectada: {json.dumps(intent_result, indent=2)}")
-                
-                if intent_result['intent'] == 'status':
-                    return get_current_status()
-                elif intent_result['intent'] == 'query':
-                    return intent_result['response']
-                    
-                return None
+            return intent_result['response']
                 
         except json.JSONDecodeError as e:
             logger.error(f"Erro ao decodificar resposta do GPT: {e}")
@@ -450,7 +455,7 @@ def process_ai_message(mensagem, nome_remetente):
             return None
             
     except Exception as e:
-        logger.error(f"Erro ao processar mensagem com GPT: {e}")
+        logger.error(f"Erro ao processar mensagem com GPT: {e}", exc_info=True)
         return None
 
 def format_detailed_weather(weather):
