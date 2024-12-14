@@ -27,8 +27,7 @@ REDIS_SSL = os.getenv('REDIS_SSL', 'False').lower() == 'true'
 
 # Validação das variáveis de ambiente
 required_vars = [
-    'BOT_URL', 'GROUP_ID', 'SERVER_URL', 'INSTANCE', 'APIKEY',
-    'REDIS_HOST', 'REDIS_PASSWORD'
+    'BOT_URL', 'GROUP_ID', 'SERVER_URL', 'INSTANCE', 'APIKEY'
 ]
 missing_vars = [var for var in required_vars if not os.getenv(var)]
 

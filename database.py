@@ -8,11 +8,9 @@ import sys
 
 # Configuração do Redis
 redis_client = redis.Redis(
-    host=REDIS_HOST,
-    port=REDIS_PORT,
-    db=REDIS_DB,
-    password=REDIS_PASSWORD,
-    ssl=REDIS_SSL,
+    host='172.18.0.1',  # Host interno do EasyPanel
+    port=6379,
+    db=0,
     decode_responses=True
 )
 
@@ -21,7 +19,7 @@ try:
     redis_client.ping()
 except redis.ConnectionError as e:
     print(f"Erro ao conectar ao Redis: {e}")
-    print("Verifique as configurações de conexão no arquivo .env")
+    print("Verifique se o Redis está acessível no host 172.18.0.1")
     sys.exit(1)
 
 def connect_db():
