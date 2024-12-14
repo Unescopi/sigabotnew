@@ -11,6 +11,7 @@ redis_client = redis.Redis(
     host='sigabot_redis',  # Nome interno do serviço Redis no EasyPanel
     port=6379,
     db=0,
+    password='e02d5938c57577e7ec14',  # Senha do Redis no EasyPanel
     decode_responses=True
 )
 
@@ -20,6 +21,9 @@ try:
 except redis.ConnectionError as e:
     print(f"Erro ao conectar ao Redis: {e}")
     print("Verifique se o serviço 'sigabot_redis' está acessível")
+except redis.AuthenticationError as e:
+    print(f"Erro de autenticação no Redis: {e}")
+    print("Verifique se a senha do Redis está correta")
     sys.exit(1)
 
 def connect_db():
