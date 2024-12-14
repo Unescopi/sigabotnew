@@ -542,8 +542,8 @@ def process_message(data):
             logger.info("Mensagem vazia, ignorando")
             return None
             
-        # Ignorar mensagens que não são relevantes
-        if len(mensagem) < 3:  # Mensagens muito curtas
+        # Ignorar mensagens muito curtas
+        if len(mensagem) < 3:
             logger.info("Mensagem muito curta, ignorando")
             return None
             
@@ -551,6 +551,11 @@ def process_message(data):
         if mensagem.startswith('!'):
             logger.info("Processando comando")
             return process_command(mensagem, nome_remetente)
+            
+        # Verificar se é uma confirmação de transição
+        if "!sim" in mensagem.lower() or "!nao" in mensagem.lower():
+            logger.info("Processando confirmação")
+            return process_confirmation(mensagem, nome_remetente)
             
         # Verificar se a mensagem contém palavras-chave relevantes
         palavras_chave = [
@@ -566,23 +571,10 @@ def process_message(data):
             logger.info("Mensagem sem palavras-chave relevantes, ignorando")
             return None
             
-        # Processar com GPT apenas mensagens relevantes
-        logger.info("Processando mensagem com AI")
-        return process_ai_message(mensagem, nome_remetente)
-        
-    except Exception as e:
-        logger.error(f"Erro ao processar mensagem: {e}", exc_info=True)
-        return None
-
-def process_ai_message(mensagem, nome_remetente):
-    """Processa mensagem usando AI para determinar intenção"""
-    try:
+        # Processar mensagem relevante
+        logger.info("Processando mensagem relevante")
         mensagem = mensagem.lower()
         
-        # Primeiro verificar se é uma confirmação de transição
-        if "!sim" in mensagem or "!nao" in mensagem:
-            return process_confirmation(mensagem, nome_remetente)
-            
         # Verificar se é uma transição ou atualização de status
         if any(word in mensagem for word in ["center", "centro", "centenario", "centenário", "goio", "goioere", "goioerê"]):
             transition_response = process_transition_status(mensagem, nome_remetente)
@@ -608,7 +600,7 @@ def process_ai_message(mensagem, nome_remetente):
                     f"- Goioerê: {goio_status['status'].lower()}\n"
                     f"Última atualização: {center_status['ultima_atualizacao']}"
                 )
-            
+        
         # Se chegou aqui, não entendeu a mensagem
         return (
             "Desculpe, não entendi sua mensagem. Você pode:\n"
@@ -619,8 +611,8 @@ def process_ai_message(mensagem, nome_remetente):
         )
         
     except Exception as e:
-        logger.error(f"Erro ao processar mensagem AI: {e}")
-        return "Desculpe, ocorreu um erro ao processar sua mensagem"
+        logger.error(f"Erro ao processar mensagem: {e}", exc_info=True)
+        return None
 
 def process_command(mensagem, nome_remetente):
     """Processa comandos com !"""
