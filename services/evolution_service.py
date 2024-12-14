@@ -518,7 +518,10 @@ def get_weather_message():
 def process_message(data):
     """Processa mensagens recebidas"""
     try:
-        logger.info(f"Dados recebidos: {json.dumps(data, indent=2)}")
+        # Log detalhado dos dados recebidos
+        logger.info("=" * 50)
+        logger.info("Nova mensagem recebida")
+        logger.info(f"Dados completos: {json.dumps(data, indent=2)}")
         
         # Extrair mensagem do objeto data
         mensagem = ''
@@ -533,16 +536,38 @@ def process_message(data):
             if 'sender' in data and isinstance(data['sender'], dict):
                 nome_remetente = data['sender'].get('pushName', 'Usuário')
         
-        logger.info(f"Processando mensagem: '{mensagem}' de {nome_remetente}")
+        logger.info(f"Mensagem processada: '{mensagem}' de {nome_remetente}")
         
         if not mensagem:
+            logger.info("Mensagem vazia, ignorando")
+            return None
+            
+        # Ignorar mensagens que não são relevantes
+        if len(mensagem) < 3:  # Mensagens muito curtas
+            logger.info("Mensagem muito curta, ignorando")
             return None
             
         # Verificar se é um comando
         if mensagem.startswith('!'):
+            logger.info("Processando comando")
             return process_command(mensagem, nome_remetente)
             
-        # Processar com GPT
+        # Verificar se a mensagem contém palavras-chave relevantes
+        palavras_chave = [
+            "center", "centro", "centenario", "centenário",
+            "goio", "goioere", "goioerê",
+            "como", "qual", "status",
+            "liberado", "fechado", "aberto",
+            "transição", "transicao",
+            "bloqueado", "livre"
+        ]
+        
+        if not any(palavra in mensagem.lower() for palavra in palavras_chave):
+            logger.info("Mensagem sem palavras-chave relevantes, ignorando")
+            return None
+            
+        # Processar com GPT apenas mensagens relevantes
+        logger.info("Processando mensagem com AI")
         return process_ai_message(mensagem, nome_remetente)
         
     except Exception as e:
