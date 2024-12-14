@@ -382,8 +382,8 @@ def register_status_intent(nome_remetente, status_type, local):
         
         # Preparar e enviar mensagem de notificação
         try:
-            # Obter informações do clima
-            weather = get_weather_status()
+            # Atualizar informações do clima
+            weather = update_weather_info()
             weather_info = ""
             if weather:
                 weather_info = f"\n\n🌤️ *Clima*: {weather['condicao']}"
