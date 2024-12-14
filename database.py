@@ -5,13 +5,14 @@ from config import BR_TIMEZONE
 import redis
 import json
 import sys
+import os
 
 # Configuração do Redis
 redis_client = redis.Redis(
-    host='sigabot_redis',  # Nome interno do serviço Redis no EasyPanel
-    port=6379,
-    db=0,
-    password='e02d5938c57577e7ec14',  # Senha do Redis no EasyPanel
+    host=os.getenv('REDIS_HOST', 'sigabot_redis'),
+    port=int(os.getenv('REDIS_PORT', '6379')),
+    db=int(os.getenv('REDIS_DB', '0')),
+    password=os.getenv('REDIS_PASSWORD'),
     decode_responses=True
 )
 
