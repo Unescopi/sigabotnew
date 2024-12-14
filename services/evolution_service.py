@@ -5,18 +5,18 @@ import re
 from datetime import datetime, timedelta
 import pytz
 import requests
-import config
-from database import redis_client
 import random
 import time
-from datetime import datetime, timedelta
 import openai
 from database import (
     get_status, update_status, record_closure_time,
     get_daily_stats, get_weather_status, update_weather,
     redis_client
 )
-from config import BR_TIMEZONE, PICOS, WEATHER_API_KEY, CITY_ID
+from config import (
+    BR_TIMEZONE, PICOS, WEATHER_API_KEY, CITY_ID,
+    GROUP_ID, SERVER_URL, INSTANCE, APIKEY
+)
 
 logger = logging.getLogger(__name__)
 openai.api_key = os.getenv('OPENAI_API_KEY')
@@ -252,14 +252,14 @@ def notify_group(mensagem, group_id=None):
     """Envia mensagem para o grupo"""
     try:
         if not group_id:
-            group_id = config.GROUP_ID
+            group_id = GROUP_ID
             
         logger.info(f"Enviando notificação para o grupo {group_id}")
         logger.info(f"Mensagem: {mensagem}")
             
         headers = {
             'Content-Type': 'application/json',
-            'apikey': config.APIKEY
+            'apikey': APIKEY
         }
         
         payload = {
@@ -271,9 +271,9 @@ def notify_group(mensagem, group_id=None):
             }
         }
         
-        logger.info(f"Fazendo requisição para {config.SERVER_URL}/message/sendText/{config.INSTANCE}")
+        logger.info(f"Fazendo requisição para {SERVER_URL}/message/sendText/{INSTANCE}")
         response = requests.post(
-            f"{config.SERVER_URL}/message/sendText/{config.INSTANCE}",
+            f"{SERVER_URL}/message/sendText/{INSTANCE}",
             headers=headers,
             json=payload
         )
