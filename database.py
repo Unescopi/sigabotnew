@@ -47,12 +47,19 @@ def update_status(lado, novo_status):
     conn.close()
 
 def record_closure_time(lado, tempo_fechamento):
+    """Registra tempo de fechamento"""
+    # Ignorar tempos muito curtos (menos de 1 minuto) pois provavelmente são correções
+    if tempo_fechamento < 60:  # 60 segundos
+        return
+        
     conn = connect_db()
     cursor = conn.cursor()
     agora = datetime.now(BR_TIMEZONE)
+    agora_str = agora.strftime('%Y-%m-%d %H:%M:%S')
+    
     cursor.execute(
-        "INSERT INTO tempos_fechamento (lado, tempo_fechamento, data_registro) VALUES (?, ?, ?)",
-        (lado, tempo_fechamento, agora.strftime('%Y-%m-%d %H:%M:%S'))
+        "INSERT INTO fechamentos (lado, tempo_fechamento, timestamp) VALUES (?, ?, ?)",
+        (lado, tempo_fechamento, agora_str)
     )
     conn.commit()
     conn.close()
@@ -61,16 +68,35 @@ def calculate_average_closure(lado, limit=5):
     """Calcula média móvel dos últimos fechamentos"""
     conn = connect_db()
     cursor = conn.cursor()
-    cursor.execute(
-        "SELECT tempo_fechamento FROM tempos_fechamento WHERE lado = ? ORDER BY id DESC LIMIT ?", 
-        (lado, limit)
-    )
+    
+    # Pegar apenas fechamentos com duração significativa (mais de 1 minuto)
+    cursor.execute """
+        SELECT tempo_fechamento 
+        FROM fechamentos 
+        WHERE lado = ? 
+        AND tempo_fechamento >= 60
+        ORDER BY timestamp DESC 
+        LIMIT ?
+    """, (lado, limit)
+    
     tempos = cursor.fetchall()
     conn.close()
     
     if not tempos:
-        return 0
-    return int(sum(t[0] for t in tempos) / len(tempos))
+        return None
+        
+    # Remover outliers (tempos muito diferentes da média)
+    tempos = [t[0] for t in tempos]
+    media = sum(tempos) / len(tempos)
+    desvio_padrao = (sum((x - media) ** 2 for x in tempos) / len(tempos)) ** 0.5
+    
+    # Considerar apenas tempos dentro de 2 desvios padrão da média
+    tempos_filtrados = [t for t in tempos if abs(t - media) <= 2 * desvio_padrao]
+    
+    if not tempos_filtrados:
+        return media  # Se todos forem outliers, retorna a média original
+        
+    return sum(tempos_filtrados) / len(tempos_filtrados)
 
 def get_daily_stats():
     """Retorna estatísticas do dia atual"""
@@ -80,23 +106,23 @@ def get_daily_stats():
     
     # Total de fechamentos do dia
     cursor.execute(
-        "SELECT COUNT(*) FROM tempos_fechamento WHERE date(data_registro) = ?",
+        "SELECT COUNT(*) FROM fechamentos WHERE date(timestamp) = ?",
         (hoje,)
     )
     total_fechamentos = cursor.fetchone()[0]
     
     # Tempo médio de fechamento
     cursor.execute(
-        "SELECT AVG(tempo_fechamento) FROM tempos_fechamento WHERE date(data_registro) = ?",
+        "SELECT AVG(tempo_fechamento) FROM fechamentos WHERE date(timestamp) = ?",
         (hoje,)
     )
     tempo_medio = cursor.fetchone()[0] or 0
     
     # Horário mais movimentado
     cursor.execute("""
-        SELECT strftime('%H:00', data_registro) as hora, COUNT(*) as total
-        FROM tempos_fechamento 
-        WHERE date(data_registro) = ?
+        SELECT strftime('%H:00', timestamp) as hora, COUNT(*) as total
+        FROM fechamentos 
+        WHERE date(timestamp) = ?
         GROUP BY hora
         ORDER BY total DESC
         LIMIT 1

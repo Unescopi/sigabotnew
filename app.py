@@ -47,15 +47,22 @@ def webhook():
             logger.info(f"Remetente: {message_data.get('pushName')}")
             logger.info("========================")
             
-            if message_data.get('messageType') == 'conversation':
-                text = message_data.get('message', {}).get('conversation')
+            if message_data.get('messageType') in ['conversation', 'extendedTextMessage']:
+                # Pega o texto da mensagem (suporta mensagens normais e respostas)
+                text = (message_data.get('message', {}).get('conversation') or 
+                       message_data.get('message', {}).get('extendedTextMessage', {}).get('text'))
+                
                 sender = message_data.get('pushName')
                 group_id = message_data.get('key', {}).get('remoteJid')
                 
                 if text and group_id == os.getenv('GROUP_ID'):
                     response = process_message({
                         'text': text,
-                        'sender': {'pushName': sender}
+                        'sender': {
+                            'pushName': sender,
+                            'messageType': message_data.get('messageType'),
+                            'quoted': bool(message_data.get('message', {}).get('extendedTextMessage', {}).get('contextInfo'))
+                        }
                     })
                     
                     if response:
