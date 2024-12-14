@@ -350,11 +350,14 @@ def process_message(data):
         mensagem = ''
         nome_remetente = 'Usuário'
         
-        if data.get('event') == 'messages.upsert':
-            message_data = data.get('data', {})
-            if message_data.get('message', {}).get('conversation'):
-                mensagem = message_data['message']['conversation'].strip()
-                nome_remetente = message_data.get('pushName', 'Usuário')
+        if isinstance(data, dict):
+            # Extrair texto da mensagem
+            if 'text' in data:
+                mensagem = data['text'].strip()
+            
+            # Extrair nome do remetente
+            if 'sender' in data and isinstance(data['sender'], dict):
+                nome_remetente = data['sender'].get('pushName', 'Usuário')
         
         logger.info(f"Processando mensagem: '{mensagem}' de {nome_remetente}")
         
