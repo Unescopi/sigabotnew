@@ -315,64 +315,88 @@ def process_confirmation(mensagem, nome_remetente):
 def register_status_intent(nome_remetente, status_type, local):
     """Registra intenção de alteração de status para um local específico"""
     try:
+        logger.info(f"Registrando status: tipo={status_type}, local={local}, remetente={nome_remetente}")
+        
         # Verificar se o status é válido
         if status_type not in [ESTADO_ABERTO, ESTADO_FECHADO, ESTADO_TRANSICAO, "TRANSICAO_COMPLETA"]:
+            logger.error(f"Status inválido recebido: {status_type}")
             return "Status inválido. Use ABERTO, FECHADO ou TRANSICAO."
             
         # Se for uma confirmação de transição completa, salvar a intenção
         if status_type == "TRANSICAO_COMPLETA":
-            redis_client.setex(
-                f"status_intent:{nome_remetente}",
-                300,  # expira em 5 minutos
-                json.dumps({
-                    "status_type": status_type,
-                    "local": local,
-                    "timestamp": get_current_time().strftime('%Y-%m-%d %H:%M:%S')
-                })
-            )
-            return None
+            try:
+                redis_client.setex(
+                    f"status_intent:{nome_remetente}",
+                    300,  # expira em 5 minutos
+                    json.dumps({
+                        "status_type": status_type,
+                        "local": local,
+                        "timestamp": get_current_time().strftime('%Y-%m-%d %H:%M:%S')
+                    })
+                )
+                logger.info(f"Intenção de transição completa registrada para {nome_remetente}")
+                return None
+            except Exception as e:
+                logger.error(f"Erro ao salvar intenção no Redis: {e}", exc_info=True)
+                return "Erro ao registrar intenção de transição"
             
         # Obter status atual
-        status_atual = redis_client.get("status_atual")
-        if status_atual:
-            status = json.loads(status_atual)
-        else:
-            status = {}
+        try:
+            status_atual = redis_client.get("status_atual")
+            if status_atual:
+                status = json.loads(status_atual)
+                logger.info(f"Status atual carregado: {status}")
+            else:
+                status = {}
+                logger.info("Nenhum status atual encontrado, iniciando novo")
+        except Exception as e:
+            logger.error(f"Erro ao carregar status atual do Redis: {e}", exc_info=True)
+            return "Erro ao carregar status atual"
             
         # Atualizar status do local específico
         if local == "center":
             status["center"] = status_type
         elif local == "goio":
             status["goio"] = status_type
+        else:
+            logger.error(f"Local inválido recebido: {local}")
+            return "Local inválido. Use 'center' ou 'goio'"
             
         # Salvar no Redis
-        redis_client.set("status_atual", json.dumps(status))
-        atual = datetime.now().strftime("%d/%m/%Y %H:%M")
-        redis_client.set("ultima_atualizacao", atual)
-        
-        # Registrar quem fez a alteração
-        redis_client.set("ultimo_atualizador", nome_remetente)
+        try:
+            redis_client.set("status_atual", json.dumps(status))
+            atual = datetime.now().strftime("%d/%m/%Y %H:%M")
+            redis_client.set("ultima_atualizacao", atual)
+            redis_client.set("ultimo_atualizador", nome_remetente)
+            logger.info(f"Novo status salvo: {status}")
+        except Exception as e:
+            logger.error(f"Erro ao salvar novo status no Redis: {e}", exc_info=True)
+            return "Erro ao salvar novo status"
         
         nome_local = "Centenário" if local == "center" else "Goioerê"
         
-        # Preparar mensagem de notificação
-        if status_type == ESTADO_TRANSICAO:
-            mensagem = f"⚠️ ATENÇÃO ⚠️\n\n{nome_local} entrando em transição\nAtualizado por: {nome_remetente}\nHorário: {atual}"
-            notify_group(mensagem)
-            return f"{nome_local} entrando em transição"
-            
-        elif status_type == ESTADO_ABERTO:
-            mensagem = f"🟢 LIBERADO 🟢\n\n{nome_local} está ABERTO\nAtualizado por: {nome_remetente}\nHorário: {atual}"
-            notify_group(mensagem)
-            return f"Status do {nome_local} atualizado para aberto"
-            
-        elif status_type == ESTADO_FECHADO:
-            mensagem = f"🔴 BLOQUEADO 🔴\n\n{nome_local} está FECHADO\nAtualizado por: {nome_remetente}\nHorário: {atual}"
-            notify_group(mensagem)
-            return f"Status do {nome_local} atualizado para fechado"
+        # Preparar e enviar mensagem de notificação
+        try:
+            if status_type == ESTADO_TRANSICAO:
+                mensagem = f"⚠️ ATENÇÃO ⚠️\n\n{nome_local} entrando em transição\nAtualizado por: {nome_remetente}\nHorário: {atual}"
+                notify_group(mensagem)
+                return f"{nome_local} entrando em transição"
+                
+            elif status_type == ESTADO_ABERTO:
+                mensagem = f"🟢 LIBERADO 🟢\n\n{nome_local} está ABERTO\nAtualizado por: {nome_remetente}\nHorário: {atual}"
+                notify_group(mensagem)
+                return f"Status do {nome_local} atualizado para aberto"
+                
+            elif status_type == ESTADO_FECHADO:
+                mensagem = f"🔴 BLOQUEADO 🔴\n\n{nome_local} está FECHADO\nAtualizado por: {nome_remetente}\nHorário: {atual}"
+                notify_group(mensagem)
+                return f"Status do {nome_local} atualizado para fechado"
+        except Exception as e:
+            logger.error(f"Erro ao enviar notificação: {e}", exc_info=True)
+            return "Status atualizado mas houve erro ao enviar notificação"
         
     except Exception as e:
-        logger.error(f"Erro ao registrar status: {e}")
+        logger.error(f"Erro não tratado ao registrar status: {e}", exc_info=True)
         return "Erro ao processar atualização de status"
 
 def process_transition_status(mensagem, nome_remetente):
@@ -637,105 +661,51 @@ def process_command(mensagem, nome_remetente):
 def get_status(local):
     """Retorna o status de um local específico"""
     try:
+        # Obter status atual
         status_atual = redis_client.get("status_atual")
-        if not status_atual:
-            return {"status": "DESCONHECIDO", "ultima_atualizacao": "Não disponível"}
+        if status_atual:
+            status = json.loads(status_atual)
+        else:
+            status = {}
             
-        status = json.loads(status_atual)
+        # Obter última atualização
         ultima_atualizacao = redis_client.get("ultima_atualizacao")
-        
-        local = local.lower()
-        if local in ["center", "centro", "centenario", "centenário"]:
-            return {
-                "status": status.get("center", "DESCONHECIDO"),
-                "ultima_atualizacao": ultima_atualizacao or "Não disponível"
-            }
-        elif local in ["goio", "goioere", "goioerê"]:
-            return {
-                "status": status.get("goio", "DESCONHECIDO"),
-                "ultima_atualizacao": ultima_atualizacao or "Não disponível"
-            }
+        if not ultima_atualizacao:
+            ultima_atualizacao = datetime.now().strftime("%d/%m/%Y %H:%M")
+            
+        # Obter status do local específico
+        if local == "center":
+            status_local = status.get("center", ESTADO_ABERTO)
+        elif local == "goio":
+            status_local = status.get("goio", ESTADO_ABERTO)
         else:
-            return {"status": "DESCONHECIDO", "ultima_atualizacao": "Não disponível"}
+            status_local = ESTADO_ABERTO
             
-    except Exception as e:
-        logger.error(f"Erro ao obter status de {local}: {e}")
-        return {"status": "DESCONHECIDO", "ultima_atualizacao": "Não disponível"}
-
-def process_transition_status(mensagem, nome_remetente):
-    """
-    Processa mensagens relacionadas ao estado de transição
-    quando ambos os lados estão temporariamente fechados
-    """
-    try:
-        mensagem = mensagem.lower()
-        
-        # Identificar local
-        local = None
-        if any(word in mensagem for word in ["center", "centro", "centenario", "centenário"]):
-            local = "center"
-        elif any(word in mensagem for word in ["goio", "goioere", "goioerê"]):
-            local = "goio"
-            
-        if not local:
-            return "Por favor, especifique o local (Centenário ou Goioerê)"
-
-        # Identificar se é uma mensagem sobre últimos carros passando
-        ultimos_carros_patterns = [
-            "últimos carros", "ultimos carros",
-            "terminando de passar", "quase terminando",
-            "falta pouco", "já tá acabando",
-            "passou todo mundo", "todos passaram",
-            "pista limpa", "não tem mais ninguém",
-            "liberando", "vai liberar"
-        ]
-        
-        status_atual = get_status(local)
-        
-        # Se estiver em transição e a mensagem indicar que os carros passaram
-        if status_atual["status"] == ESTADO_TRANSICAO and any(pattern in mensagem for pattern in ultimos_carros_patterns):
-            # Registrar intenção de completar a transição
-            register_status_intent(nome_remetente, "TRANSICAO_COMPLETA", local)
-            nome_local = "Centenário" if local == "center" else "Goioerê"
-            return (
-                f" {nome_local}: Você está confirmando que todos os carros terminaram de passar?\n\n"
-                "Para confirmar, responda com *!sim*\n"
-                "Para cancelar, responda com *!nao*"
-            )
-        
-        # Se a mensagem indica fechamento para transição
-        if "➡️" in mensagem or "->" in mensagem or "pra" in mensagem:
-            register_status_intent(nome_remetente, ESTADO_TRANSICAO, local)
-            nome_local = "Centenário" if local == "center" else "Goioerê"
-            return f"Iniciando transição no {nome_local}. Aguarde todos os carros passarem."
-            
-        # Se é uma atualização normal de status
-        if any(word in mensagem for word in ["aberto", "liberado", "livre"]):
-            return register_status_intent(nome_remetente, ESTADO_ABERTO, local)
-        elif any(word in mensagem for word in ["fechado", "bloqueado", "parado", "trancado"]):
-            return register_status_intent(nome_remetente, ESTADO_FECHADO, local)
-        else:
-            # Se for uma consulta de status
-            if any(word in mensagem for word in ["como", "qual", "status"]):
-                status = get_status(local)
-                nome_local = "Centenário" if local == "center" else "Goioerê"
-                return f"Status do {nome_local}: {status['status'].lower()} (Última atualização: {status['ultima_atualizacao']})"
-                
-            return "Não entendi o status. Use palavras como 'aberto' ou 'fechado'"
+        return {
+            "status": status_local,
+            "ultima_atualizacao": ultima_atualizacao.decode() if isinstance(ultima_atualizacao, bytes) else ultima_atualizacao
+        }
         
     except Exception as e:
-        logger.error(f"Erro ao processar transição: {e}")
-        return None
+        logger.error(f"Erro ao obter status: {e}")
+        return {
+            "status": ESTADO_ABERTO,
+            "ultima_atualizacao": datetime.now().strftime("%d/%m/%Y %H:%M")
+        }
 
 def get_stats_message():
     """Retorna estatísticas do dia"""
-    stats = get_daily_stats()
-    return (
-        " *Estatísticas do Dia*\n"
-        f"• Fechamentos: {stats['total_fechamentos']}\n"
-        f"• Tempo médio: {stats['tempo_medio']} min\n"
-        f"• Pico: {stats['horario_pico']}"
-    )
+    try:
+        stats = get_daily_stats()
+        return (
+            f"📊 *Estatísticas do Dia*\n\n"
+            f"🚗 Total de transições: {stats['total_transitions']}\n"
+            f"⏱️ Tempo médio aberto: {stats['avg_open_time']} minutos\n"
+            f"🔄 Última atualização: {stats['last_update']}"
+        )
+    except Exception as e:
+        logger.error(f"Erro ao gerar estatísticas: {e}")
+        return "Erro ao gerar estatísticas"
 
 def update_weather_info():
     """Atualiza informações do clima com retry e fallback"""

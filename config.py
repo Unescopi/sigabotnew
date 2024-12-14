@@ -22,11 +22,37 @@ APIKEY = os.getenv('APIKEY')
 required_vars = [
     'BOT_URL', 'GROUP_ID', 'SERVER_URL', 'INSTANCE', 'APIKEY'
 ]
+
+# Primeiro verifica se as variáveis existem
 missing_vars = [var for var in required_vars if not os.getenv(var)]
 
 if missing_vars:
     print(f"Erro: Variáveis de ambiente faltando: {', '.join(missing_vars)}")
     print("Por favor, configure todas as variáveis necessárias no arquivo .env")
+    sys.exit(1)
+
+# Depois verifica se os valores são válidos
+invalid_vars = []
+
+# Verifica se as URLs são válidas
+for url_var in ['BOT_URL', 'SERVER_URL']:
+    url = os.getenv(url_var)
+    if not url.startswith(('http://', 'https://')):
+        invalid_vars.append(f"{url_var} (deve começar com http:// ou https://)")
+
+# Verifica se GROUP_ID é um número válido
+try:
+    int(GROUP_ID)
+except ValueError:
+    invalid_vars.append("GROUP_ID (deve ser um número)")
+
+# Verifica se APIKEY tem um tamanho mínimo
+if len(APIKEY) < 10:
+    invalid_vars.append("APIKEY (muito curta, verifique se está correta)")
+
+if invalid_vars:
+    print(f"Erro: Valores inválidos nas variáveis de ambiente: {', '.join(invalid_vars)}")
+    print("Por favor, corrija os valores no arquivo .env")
     sys.exit(1)
 
 # Configurações do Flask
