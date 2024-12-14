@@ -382,18 +382,44 @@ def register_status_intent(nome_remetente, status_type, local):
         
         # Preparar e enviar mensagem de notificação
         try:
+            # Obter informações do clima
+            weather = get_weather_status()
+            weather_info = ""
+            if weather:
+                weather_info = f"\n\n🌤️ *Clima*: {weather['condicao']}"
+                if weather.get('alerta'):
+                    weather_info += f"\n⚠️ {weather['alerta']}"
+
+            # Obter status do outro local
+            outro_local = "center" if local == "goio" else "goio"
+            outro_status = status.get(outro_local, "DESCONHECIDO")
+            outro_nome = "Centenário" if outro_local == "center" else "Goioerê"
+            status_info = f"\n\n{outro_nome}: {outro_status}"
+
             if status_type == ESTADO_TRANSICAO:
-                mensagem = f"⚠️ ATENÇÃO ⚠️\n\n{nome_local} entrando em transição\nAtualizado por: {nome_remetente}\nHorário: {atual}"
+                mensagem = (f"⚠️ ATENÇÃO ⚠️\n\n{nome_local} entrando em transição"
+                          f"\nAtualizado por: {nome_remetente}"
+                          f"\nHorário: {atual}"
+                          f"{status_info}"
+                          f"{weather_info}")
                 notify_group(mensagem)
                 return f"{nome_local} entrando em transição"
                 
             elif status_type == ESTADO_ABERTO:
-                mensagem = f"🟢 LIBERADO 🟢\n\n{nome_local} está ABERTO\nAtualizado por: {nome_remetente}\nHorário: {atual}"
+                mensagem = (f"🟢 LIBERADO 🟢\n\n{nome_local} está ABERTO"
+                          f"\nAtualizado por: {nome_remetente}"
+                          f"\nHorário: {atual}"
+                          f"{status_info}"
+                          f"{weather_info}")
                 notify_group(mensagem)
                 return f"Status do {nome_local} atualizado para aberto"
                 
             elif status_type == ESTADO_FECHADO:
-                mensagem = f"🔴 BLOQUEADO 🔴\n\n{nome_local} está FECHADO\nAtualizado por: {nome_remetente}\nHorário: {atual}"
+                mensagem = (f"🔴 BLOQUEADO 🔴\n\n{nome_local} está FECHADO"
+                          f"\nAtualizado por: {nome_remetente}"
+                          f"\nHorário: {atual}"
+                          f"{status_info}"
+                          f"{weather_info}")
                 notify_group(mensagem)
                 return f"Status do {nome_local} atualizado para fechado"
         except Exception as e:
