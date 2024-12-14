@@ -3,17 +3,16 @@ import logging
 import random
 import requests
 from datetime import datetime, timedelta
+import openai
 from database import (
     get_status, update_status, record_closure_time,
     get_daily_stats, get_weather_status, update_weather,
     redis_client
 )
 from config import BR_TIMEZONE, PICOS, WEATHER_API_KEY, CITY_ID
-from openai import OpenAI
-import json
 
 logger = logging.getLogger(__name__)
-client = OpenAI(api_key=os.getenv('OPENAI_API_KEY'))
+openai.api_key = os.getenv('OPENAI_API_KEY')
 
 # Controle de publicidade
 ultima_publicidade = None
@@ -225,7 +224,7 @@ def process_ai_message(mensagem, nome_remetente):
         MENSAGEM: {nome_remetente}: "{mensagem}"
         """
 
-        response = client.chat.completions.create(
+        response = openai.ChatCompletion.create(
             model="gpt-4",
             messages=[
                 {"role": "system", "content": system_prompt},
