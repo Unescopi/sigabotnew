@@ -330,7 +330,52 @@ def process_message(data):
         if mensagem in ['!sim', '!nao']:
             return process_confirmation(mensagem, nome_remetente)
             
-        # Ignorar outras mensagens
+        # Processar consultas de status
+        if any(palavra in mensagem for palavra in ['como esta', 'como está', 'status']):
+            status_center, ultima_center = get_status('CENTER')
+            status_goio, ultima_goio = get_status('GOIO')
+            
+            if not status_center or not status_goio:
+                return (
+                    " ❌ *Erro*\n"
+                    "Não foi possível obter o status.\n"
+                    "Por favor, tente novamente."
+                )
+                
+            tempo_center = get_time_since_update(ultima_center)
+            tempo_goio = get_time_since_update(ultima_goio)
+            
+            # Obter informações do clima
+            weather = get_weather_status()
+            weather_info = ""
+            if weather:
+                weather_info = f"\n\n🌤️ *Clima*: {weather['condicao']}"
+                if weather.get('alerta'):
+                    weather_info += f"\n⚠️ {weather['alerta']}"
+            
+            # Obter estatísticas
+            stats = get_stats_message()
+            
+            # Chance de 30% de mostrar publicidade
+            publicidade = ""
+            if random.random() < 0.3 and pode_enviar_publicidade():
+                publicidade = f"\n\n📢 {get_mensagem_publicidade()}"
+            
+            return (
+                " 📊 *Status Atual*\n\n"
+                f"QC: {status_center}\n"
+                f"⏰ {tempo_center}\n\n"
+                f"Goioerê: {status_goio}\n"
+                f"⏰ {tempo_goio}"
+                f"{weather_info}\n\n"
+                f"📊 {stats}"
+                f"{publicidade}"
+            )
+            
+        # Processar alterações de status
+        if any(palavra in mensagem for palavra in ['fechado', 'aberto', 'liberado', 'bloqueado', 'passando', 'parado']):
+            return toggle_status(nome_remetente)
+            
         return None
             
     except Exception as e:
