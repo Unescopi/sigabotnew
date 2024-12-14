@@ -3,6 +3,7 @@ import json
 import logging
 import random
 import requests
+import time
 from datetime import datetime, timedelta
 import openai
 from database import (
